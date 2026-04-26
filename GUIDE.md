@@ -1,6 +1,14 @@
 # Vedic Astro Engine: The Definitive Developer's Guide
 
-Welcome to the **Vedic Astro Engine**, a professional-grade, pure-Python library designed for high-precision astrological research and application development.
+Welcome to the **Vedic Astro Engine**, a professional-grade, pure-Python library designed for high-precision astrological research and application development. This engine is completely free of the Swiss Ephemeris dependency and is powered by NASA JPL ephemerides.
+
+---
+
+## 📦 Installation
+
+```bash
+pip install vedic_astro_engine_lite
+```
 
 ---
 
@@ -19,7 +27,7 @@ Welcome to the **Vedic Astro Engine**, a professional-grade, pure-Python library
 12. [Advanced Transit (Gochar)](#12-advanced-transit-gochar)
 13. [Chakras (SBC & Sudarshan)](#13-chakras-sbc--sudarshan)
 14. [Panchanga & Astronomy](#14-panchanga--astronomy)
-15. [AI Agent Integration (Graphify)](#15-ai-agent-integration-graphify)
+15. [Professional PDF Reporting](#15-professional-pdf-reporting)
 
 ---
 
@@ -35,54 +43,32 @@ from vedic_astro_engine import build_charts
 data = build_charts(
     year=1992, month=11, day=14, 
     hour=8, minute=10, 
-    lat=26.0411, lon=84.6514, 
+    lat=26.0411, lon_deg=84.6514, 
     ayanamsha_type="LAHIRI", 
     node_type="TRUE"
 )
 ```
 
-### Important: Coordinate Entry (N/E/S/W)
-To ensure mathematical precision, the engine uses decimal degrees:
-*   **Latitude**: Use positive values for **North** (`+`) and negative values for **South** (`-`).
-*   **Longitude**: Use positive values for **East** (`+`) and negative values for **West** (`-`).
-
-| Direction | Sign | Example |
-| :--- | :--- | :--- |
-| North (N) | `+` | Delhi: `28.61` |
-| South (S) | `-` | Sydney: `-33.86` |
-| East (E) | `+` | Mumbai: `72.87` |
-| West (W) | `-` | New York: `-74.00` |
-
-### Main Output Object
-- `data["planets"]`: Dictionary of planet objects.
-- `data["lagna"]`: Ascendant longitude (float).
-- `data["vargas"]`: List of longitudes for all 16+ divisional charts.
-- `data["dashas"]`: Complete hierarchical dasha trees.
-
 ---
 
 ## 2. Mathematics & Precision
 
-### Nutation Correction
-We apply the `delta_psi` nutation adjustment to geocentric longitudes to ensure sub-arcsecond accuracy compared to Swiss Ephemeris.
-$$ \lambda_{sidereal} = \lambda_{geo} - \Delta\psi - \text{Ayanamsha} $$
+### Swiss Ephemeris Independence
+VedicAstroEngine is **completely independent of the Swiss Ephemeris library**. It uses NASA's DE421/DE440 ephemerides via the `Skyfield` library.
 
-### Retrogression logic
-Calculated via central-difference velocity checking.
-```python
-# Check if a planet is retrograde
-is_retro = data["planets"]["Saturn"]["is_retrograde"] # Boolean
-```
+### Nutation Correction
+We apply `delta_psi` nutation adjustment to ensure sub-arcsecond accuracy:
+$$ \lambda_{sidereal} = \lambda_{geo} - \Delta\psi - \text{Ayanamsha} $$
 
 ---
 
 ## 3. Dasha Systems (Timing Analysis)
 
-### Vimshottari Dasha (6 Levels)
+### Vimshottari Dasha (Up to 6 Levels)
 ```python
-# Accessing Mahadasha (MD) and Antardasha (AD)
+# Accessing Mahadasha (MD)
 md_list = data["dashas"]["vimshottari"]
-current_md = md_list[0] # Returns dict with 'lord', 'start', 'end'
+current_md = md_list[0] 
 ```
 
 ### Other Systems
@@ -94,11 +80,10 @@ current_md = md_list[0] # Returns dict with 'lord', 'start', 'end'
 
 ## 4. Ashtakavarga (The Point System)
 
-### BAV & SAV
-Calculates Bindus for 7 planets + Lagna.
+Calculates Bindus for 7 planets + Lagna and the Sarvashtakavarga (SAV).
 ```python
-# Total Sarvashtakavarga (SAV) for a sign
-sav_score = data["ashtakavarga"]["SAV"][1] # Points in Aries
+# Total Sarvashtakavarga (SAV) for Aries (Sign 1)
+sav_score = data["ashtakavarga"]["SAV"][1] 
 ```
 
 ---
@@ -106,10 +91,9 @@ sav_score = data["ashtakavarga"]["SAV"][1] # Points in Aries
 ## 5. Graha Drishti (Planetary Aspects)
 
 Full aspect calculation (100% strength) as per BPHS.
-- **Special Aspects**: Mars (4,8), Jupiter (5,9), Saturn (3,10).
 ```python
-# Check aspects on a specific planet
-aspects_on_moon = data["aspects"]["Moon"] # List of aspecting planets
+# Check aspects on Moon
+aspects_on_moon = data["aspects"]["Moon"] 
 ```
 
 ---
@@ -118,9 +102,7 @@ aspects_on_moon = data["aspects"]["Moon"] # List of aspecting planets
 
 ### Baala-Adi (Age) & Shayana-Adi (Activity)
 ```python
-# Example: Check Sun's activity state
-state = data["avasthas"]["Sun"]["shayana_adi"] # e.g., "Prakashana"
-age = data["avasthas"]["Sun"]["baala_adi"]      # e.g., "Yuva"
+age = data["avasthas"]["Sun"]["baala_adi"] # e.g., "Yuva"
 ```
 
 ---
@@ -129,27 +111,17 @@ age = data["avasthas"]["Sun"]["baala_adi"]      # e.g., "Yuva"
 
 Extensive detection of:
 - **Nabhasa Yogas**: Gola, Yuga, Veena, etc.
-- **Surya/Chandra Yogas**: Vesi, Vasi, Sunaphaa, Anapha, etc.
-- **Raja Yogas**: Kendra-Trikona lord relationships.
-
-```python
-# Check detected yogas
-for yoga in data["yogas"]["combinations"]:
-    print(f"Detected: {yoga['name']} - {yoga['description']}")
-```
+- **Raja Yogas**: Kendra-Trikona relationships.
+- **Dhana Yogas**: Wealth combinations.
 
 ---
 
 ## 8. Jaimini Astrology (Karakas & Yogas)
 
 ### Chara Karakas (7-Planetary System)
-1. Atma Karaka (AK) to 7. Dara Karaka (DK).
 ```python
-ak = data["jaimini_karakas"]["AK"] # returns 'Sun', 'Mars', etc.
+ak = data["jaimini_karakas"]["AK"] # Atma Karaka
 ```
-
-### Jaimini Raja Sambandha
-Detects high-level career yogas involving AK and AmK.
 
 ---
 
@@ -157,35 +129,15 @@ Detects high-level career yogas involving AK and AmK.
 
 ### Ashtakoota Guna Milan
 ```python
-from vedic_astro_engine import calculate_guna_milan, detect_kuja_dosha
-
-# Compare two charts
+from vedic_astro_engine import calculate_guna_milan
 comparison = calculate_guna_milan(boy_data, girl_data)
-score = comparison["total_score"] # x/36
-```
-
-### Kuja Dosha (Manglik) & Papa Samya
-```python
-dosha = detect_kuja_dosha(data["planets"], data["lagna"])
-malefic_balance = calculate_papa_samya(data["planets"], data["lagna"])
 ```
 
 ---
 
 ## 10. Varshaphala (Tajika Annual Chart)
 
-### Solar Return & Muntha
-```python
-from vedic_astro_engine import find_solar_return
-
-# Find moment when Sun returns to natal longitude
-sr_time = find_solar_return(natal_sun_lon=208.22, year=2024)
-```
-
-### Tajik Features
-- **Sahams**: 36+ sensitive points (`data["sahams"]`).
-- **Tajik Yogas**: Ithasala, Eshrpha, Kamboola.
-- **Varsha Swamy**: The Lord of the Year.
+Includes **Muntha**, **Sahams**, and **Tajik Yogas**.
 
 ---
 
@@ -193,92 +145,42 @@ sr_time = find_solar_return(natal_sun_lon=208.22, year=2024)
 
 ### Pinda & Amsa Ayu
 Classical mathematical models for life expectancy.
-```python
-from vedic_astro_engine import calculate_pinda_ayu
-
-# Calculate longevity years
-ayu = calculate_pinda_ayu(planet_lons, lagna_lon)
-print(f"Total Ayu: {ayu['total_unrefined']} years")
-```
-
-### Medical Mapping (Kalapurusha)
-Maps malefic afflictions to specific body areas.
-```python
-# Accessing health vulnerabilities
-for issue in data["health_vulnerabilities"]:
-    print(f"Health Alert: {issue}")
-```
-
-### Maraka & Badhaka
-Detects killer planets and obstructing lords for timing critical life events.
 
 ---
 
 ## 12. Advanced Transit (Gochar)
 
 ### Moorthy Nirnaya & Vedha
-- **Moorthy**: Classification (Gold/Silver/Copper/Iron) based on Moon sign at entry.
-- **Vedha**: Checks if a transit result is blocked by another planet.
-
-### Transit Scanner (Precise Degree Hits)
-```python
-from vedic_astro_engine import find_transit_crossing
-
-# Find when Saturn hits exactly 300° (Aquarius)
-hits = find_transit_crossing("Saturn", 300.0, start_jd=2460310.5)
-```
+Classification of transits and checking for obstacles (Vedha).
 
 ---
 
-## 12. Chakras (SBC & Sudarshan)
+## 13. Chakras (SBC & Sudarshan)
 
 ### Sarvatobhadra Chakra (SBC)
-Analyzes 28 Nakshatras (including Abhijit) for "piercing" (Vedha) on natal positions.
-```python
-vedha_hits = data["sarvatobhadra"]["vedha_hits"]
-```
-
-### Sudarshan Chakra
-Triple-chart overlay (Lagna, Moon, Sun) for combined house strength.
-```python
-strength = data["sudarshan_chakra"][10]["strength_score"] # Strength of 10th house
-```
+Analyzes 28 Nakshatras (including Abhijit) for "piercing" (Vedha).
 
 ---
 
 ## 14. Panchanga & Astronomy
 
-### Daily Calculations
 - **Tithi, Vara, Nakshatra, Yoga, Karana**.
-- **Choghadiya**: Auspicious time slots for the day/night.
-
-### Eclipse Scanner
-High-precision search for Solar and Lunar eclipses.
-```python
-from vedic_astro_engine import find_next_eclipse
-
-# Search for eclipses in the next year
-events = find_next_eclipse(start_jd=2460310.5, eclipse_type="SOLAR")
-```
-
-### Indu Lagna (Wealth)
-Calculation of the wealth point and its lord.
-```python
-indu = data["indu_lagna"]
-print(f"Indu Lagna is in {indu['indu_sign_name']}")
-```
+- **Eclipse Scanner**: High-precision search for Solar and Lunar eclipses.
 
 ---
 
-## 15. AI Agent Integration (Graphify)
+## 15. Professional PDF Reporting
 
-This repository includes a **Knowledge Graph** to help AI agents navigate the code.
-- **`graphify-out/graph.json`**: The full semantic map.
-- **`.agents/rules/`**: Instructions for agents to save tokens and avoid redundant research.
+Generate stunning multi-page Kundali reports:
+```python
+from vedic_astro_engine import generate_pdf_report
+generate_pdf_report(data, "My_Report.pdf")
+```
 
 ---
 
 ## Licensing & Usage
-This library is licensed under the **MIT License**.
+This library is licensed under the **AGPL-3.0**. 
 
-**Developed by the Antigravity Team.**
+**Developed by Prabhakar Panday.**
+📧 **prabhakarpanday4@gmail.com**
