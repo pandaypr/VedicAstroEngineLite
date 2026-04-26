@@ -1,15 +1,28 @@
-# VedicAstroEngine Lite
+# VedicAstroEngine
 
-**VedicAstroEngine Lite** is a high-precision, open-source Python library for Vedic (Hindu) Astrology. Built on top of the robust **Skyfield** astronomical library and the **Swiss Ephemeris** (via de421/de440), it provides core calculations for astronomical points, panchanga, and divisional charts.
+**VedicAstroEngine** is a high-precision, professional-grade Python library for Vedic (Hindu) Astrology. Built on top of the robust **Skyfield** astronomical library and NASA's JPL ephemerides, it provides a complete suite of calculations for predictive, electional, and medical astrology.
 
-## Key Features (Lite Version)
+## 🚀 Key Advantages
+
+### 🛡️ Completely Free of Swiss Ephemeris (`pyswisseph`)
+VedicAstroEngine is **completely independent of the Swiss Ephemeris library**.
+- **No Licensing Headaches**: Free from the restrictive dual-licensing (GPL/Commercial) of Swiss Ephemeris.
+- **Pure Python & NASA JPL Power**: Uses NASA's DE421/DE440 ephemerides via Skyfield for state-of-the-art precision.
+- **Lightweight**: No complex C-extensions to compile; works seamlessly across all platforms.
+
+### ✅ Validated & Professional Grade
+This engine has been rigorously **validated and tested against professional astrological software** (such as Jagannatha Hora) to ensure identical results for core and advanced calculations.
+
+## 🌟 Features (Full Version)
 
 - **Shodashavarga**: High-resolution calculation of all 16 divisional charts (D-1 to D-60).
-- **Panchanga**: Tithi, Vara, Nakshatra, Yoga, and Karana.
-- **Ashtakavarga**: Core points for the 7 classical planets.
-- **Vimshottari Dasha**: Full recursive calculation of Mahadasha, Antardasha, and deeper levels.
-- **Special Points**: Special Lagnas, Upagrahas, and Sphutas.
-- **Accuracy**: Verified against standard reference software like Jagannatha Hora.
+- **Planetary Strength**: Full implementation of **Shadbala** (six-fold strength), **Vimsopaka Bala**, and Ishta/Kashta Phala.
+- **Professional PDF Engine**: Generate stunning multi-page Kundali reports with traditional diamond charts, Sudarshan Chakra, and SBC grids.
+- **Predictive Modules**: Vimshottari, Yogini, Chara, and Kaal Chakra Dashas.
+- **Comprehensive Yoga System**: Detection of thousands of Nabhasa, Raja, and Dhana Yogas.
+- **Matchmaking & Kuja Dosha**: Full Ashtakoota Guna Milan and Manglik analysis.
+- **Medical Astrology**: Longevity (Pinda/Amsa Ayu), health vulnerabilities, and Balarishta.
+- **Muhurta & Transit**: Real-time detection of auspicious times and SBC Vedha.
 
 ## Installation
 
@@ -20,22 +33,22 @@ pip install vedic_astro_engine_lite
 ## Quick Start
 
 ```python
-from vedic_astro_engine import build_charts
+from vedic_astro_engine import build_charts, generate_pdf_report
 
 # Build data for a specific moment (Lat/Lon for Bangalore)
 data = build_charts(1996, 5, 27, 14, 18, lat=12.98, lon_deg=77.58)
 
-# Access Vimshottari Dashas
-print(data['dashas']['vimshottari'][0]['lord'])
+# Generate a professional PDF report
+generate_pdf_report(data, "My_Kundali_Report.pdf")
 ```
 
-## Licensing
+## 📜 Licensing (AGPL-3.0)
 
-### Open Source (AGPL-3.0)
-This library is licensed under the **GNU Affero General Public License v3.0**. If you use this library in a public project, you must open-source your derivative work under the same license.
+This project is licensed under the **GNU Affero General Public License v3.0**. 
 
-### Commercial / Pro Version
-For features like **Shadbala**, **Yogas**, **Medical Astrology**, and **Professional PDF Reporting**, please contact the author for the Pro/Commercial version.
+- **Open Source**: The full professional engine is free for everyone to use, modify, and distribute for open-source projects.
+- **Copyleft**: If you use this library in a public project or a web service, you must release your derivative work under the same AGPL license.
+- **Commercial Use**: Commercial use is permitted, provided you adhere to the AGPL terms (releasing your source code). For closed-source commercial needs, please contact the author.
 
 **For inquiries:**
 📧 **prabhakarpanday4@gmail.com**

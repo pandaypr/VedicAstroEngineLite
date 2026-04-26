@@ -1,5 +1,5 @@
 """
-Vedic Astro Engine Lite - Core Calculations
+Vedic Astro Engine - Core Calculations
 Author: Prabhakar Panday (prabhakarpanday4@gmail.com)
 License: AGPL-3.0
 """
@@ -11,17 +11,27 @@ from .utils import load_ephemeris, _sign, _house_of
 
 from .vargas import get_all_vargas
 from .panchanga import get_panchanga
-from .dashas import get_vimshottari_dasha
+from .dashas import get_vimshottari_dasha, get_yogini_dasha, get_chara_dasha
 from .ashtakavarga import calculate_ashtakavarga
+from .shadbala import ShadbalaCalculator
 from .kaals import calculate_kaals
 from .kp import get_kp_lords, get_placidus_cusps
 from .ayanamsha import get_ayanamsha
 from .special_points import calculate_special_lagnas, calculate_upagrahas, calculate_sphutas, calculate_time_upagrahas
 from .aspects import calculate_aspects
 from .avasthas import calculate_all_avasthas
-from .transit import check_vedha
+from .yogas import (
+    detect_nabhasa_yogas, detect_raja_yogas, detect_daridra_yogas,
+    detect_marakas, calculate_ishta_kashta,
+    detect_surya_yogas, detect_chandra_yogas, detect_combination_yogas,
+    detect_parivartana_yogas, calculate_jaimini_karakas, detect_raja_sambandha
+)
+from .balarishta import detect_balarishta, detect_arishta_bhanga, detect_purva_janma_shapa
+from .varshaphala import find_solar_return, calculate_muntha, get_all_sahams, detect_tajik_yogas
+from .transit import calculate_moorthy_nirnaya, check_vedha
 from .sarvatobhadra import calculate_sbc_vedha
 from .sudarshan import calculate_sudarshan_chakra
+from .longevity import calculate_pinda_ayu, get_health_vulnerabilities, calculate_indu_lagna
 
 from .astronomy import find_next_eclipse
 from datetime import datetime
@@ -218,6 +228,11 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     results["planets"]["Ketu"] = {"longitude": ketu_sid, "declination": 0.0, "is_retrograde": True, "speed": -0.053}
     
     # Compute approximate speeds via central difference for classical 7
+    # and determine Stambhi (Stationary) status based on user thresholds.
+    stambhi_thresholds = {
+        "Mercury": 0.100, "Venus": 0.080, "Mars": 0.050, "Jupiter": 0.015, "Saturn": 0.012
+    }
+    
     dt_speed = 1.0 / 86400.0  # 1 second in days
     for name, sky_name in list(PLANETS_MAP.items())[:7]:  # Sun through Saturn
         if name not in results["planets"]: continue
@@ -233,10 +248,22 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
             diff = (lp - lm + 180.0) % 360.0 - 180.0
             speed = diff * 43200.0
             results["planets"][name]["speed"] = round(speed, 6)
+            
+            # Retrograde?
             results["planets"][name]["is_retrograde"] = speed < 0
+            
+            # Stambhi (Stationary)?
+            threshold = stambhi_thresholds.get(name)
+            if threshold and abs(speed) < threshold:
+                results["planets"][name]["status"] = "Stationary (Stambhi)"
+            elif speed < 0:
+                results["planets"][name]["status"] = "Retrograde"
+            else:
+                results["planets"][name]["status"] = "Direct"
         except Exception:
             pass
 
+    
     # Sunrise / Sunset
     sun_times = get_sunrise_sunset(lat, lon_deg, t.utc)
     results.update(sun_times)
@@ -249,26 +276,32 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     for name, p_data in results["planets"].items():
         lon = p_data["longitude"]
         p_data["sign"] = int(lon / 30) + 1
+        # Simple house calculation from Lagna (Equal house logic for predictive flags)
         rel_deg = (lon - results["lagna"]) % 360
         p_data["house"] = int(rel_deg / 30) + 1
     
     # KP Astrology (Placidus + Sublords)
+    # We calculate the eps_rad (obliquity) and other parameters for Placidus
     T = (t.tt - J2000_TT) / 36525.0
     eps0 = 23.439291 - 0.0130042 * T
     deps = 0.00256 * math.cos(math.radians(125.04452 - 1934.136261 * T))
     eps_rad = math.radians(eps0 + deps)
+    
     gast = t.gast
     last_hours = (gast + lon_deg / 15.0) % 24.0
     ramc_deg = last_hours * 15.0
+    
+    # Compute MC to pass to Placidus
     y = math.sin(math.radians(ramc_deg))
     x = math.cos(math.radians(ramc_deg)) * math.cos(eps_rad)
     mc_deg = math.degrees(math.atan2(y, x)) % 360.0
     mc_sidereal = (mc_deg - ayan) % 360.0
     
+    # Placidus calculation
     try:
         placidus_cusps = get_placidus_cusps(ramc_deg, eps_rad, math.radians(lat), results["lagna"], mc_sidereal)
     except Exception:
-        placidus_cusps = results["cusps"]
+        placidus_cusps = results["cusps"] # Fallback if iteration fails near poles
         
     results["kp"] = {
         "placidus_cusps": placidus_cusps,
@@ -280,15 +313,19 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     dt_utc = t.utc_datetime()
     results["kaals"] = calculate_kaals(results.get("sunrise"), results.get("sunset"), dt_utc.weekday())
     
+
     # Special Lagnas and Upagrahas
+
     if results.get("sunrise"):
         sr_dt = datetime.fromisoformat(results["sunrise"].replace('Z', '+00:00'))
         results["special_lagnas"] = calculate_special_lagnas(results["planets"]["Sun"]["longitude"], results["lagna"], sr_dt, dt_utc)
         results["upagrahas"] = calculate_upagrahas(results["planets"]["Sun"]["longitude"])
         
+        # Sphutas (Calculate Mandi for sphutas)
         if results.get("sunset"):
             ss_dt = datetime.fromisoformat(results["sunset"].replace('Z', '+00:00'))
             time_up = calculate_time_upagrahas(sr_dt, ss_dt, dt_utc, lat, lon_deg)
+            # Find Mandi lagna exactly
             mandi_t = ts.from_datetime(datetime.fromtimestamp(time_up["Mandi"], tz=dt_utc.tzinfo))
             mandi_houses = get_lagna_and_cusps(mandi_t, lat, lon_deg, get_ayanamsha(mandi_t.tt, ayanamsha_type))
             results["sphutas"] = calculate_sphutas(
@@ -296,6 +333,7 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
                 results["lagna"],
                 mandi_houses["lagna"]
             )
+            # Add Gulika and Mandi to planets
             gulika_t = ts.from_datetime(datetime.fromtimestamp(time_up["Gulika"], tz=dt_utc.tzinfo))
             gulika_houses = get_lagna_and_cusps(gulika_t, lat, lon_deg, get_ayanamsha(gulika_t.tt, ayanamsha_type))
             results["planets"]["Mandi"] = {"longitude": mandi_houses["lagna"], "declination": 0.0, "is_retrograde": False}
@@ -308,23 +346,133 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     # Panchanga
     results["panchanga"] = get_panchanga(results["planets"]["Sun"]["longitude"], results["planets"]["Moon"]["longitude"])
     
+    # Muhurta (Inception) Engine
+    from .muhurta import get_muhurta_summary
+    results["muhurta"] = get_muhurta_summary(results["panchanga"], results["planets"], dt_utc.weekday())
+
     # Dashas
+
+    asc_sign_num = int(results["lagna"] / 30) + 1
+    planet_signs = {name: int(p["longitude"] / 30) + 1 for name, p in results["planets"].items() if name not in ["Mandi", "Gulika", "Uranus", "Neptune", "Pluto"]}
+    
+    from .dashas import get_vimshottari_dasha, get_yogini_dasha, get_chara_dasha, get_kaal_chakra_dasha
     results["dashas"] = {
-        "vimshottari": get_vimshottari_dasha(results["planets"]["Moon"]["longitude"], t.utc_iso(), max_depth=4)
+        "vimshottari": get_vimshottari_dasha(results["planets"]["Moon"]["longitude"], t.utc_iso(), max_depth=6),
+        "yogini": get_yogini_dasha(results["planets"]["Moon"]["longitude"], t.utc_iso()),
+        "chara": get_chara_dasha(asc_sign_num, planet_signs, t.utc_iso()),
+        "kaal_chakra": get_kaal_chakra_dasha(results["planets"]["Moon"]["longitude"], t.utc_iso())
     }
     
-    # Ashtakavarga
-    planet_lons_7 = {name: p["longitude"] for name, p in results["planets"].items() if name in PLANETS_7}
+    # Ashtakavarga (Only core 7 planets)
+    planet_lons_7 = {name: p["longitude"] for name, p in results["planets"].items() if name in ShadbalaCalculator.PLANETS}
     results["ashtakavarga"] = calculate_ashtakavarga(planet_lons_7, results["lagna"])
     
-    # Aspects, Avasthas, SBC, Sudarshan
-    classical_lons = {k: v["longitude"] for k, v in results["planets"].items() if k not in ["Mandi", "Gulika", "Uranus", "Neptune", "Pluto"]}
+    # --- NEW MODULES ---
+    # All planet longitudes (excluding math-only points for some)
+    all_lons = {name: p["longitude"] for name, p in results["planets"].items()}
+    classical_lons = {k: v for k, v in all_lons.items()
+                      if k not in ["Mandi", "Gulika", "Uranus", "Neptune", "Pluto"]}
+    
+    # Aspects (Drishti)
     results["aspects"] = calculate_aspects(classical_lons)
-    results["avasthas"] = calculate_all_avasthas({k: v for k, v in classical_lons.items() if k not in ["Rahu", "Ketu"]})
+    
+    # Avasthas
+    results["avasthas"] = calculate_all_avasthas(
+        {k: v for k, v in classical_lons.items() if k not in ["Rahu", "Ketu"]}
+    )
+    
+    # Ishta / Kashta Phala (for 7 classical planets with speed data)
+    results["ishta_kashta"] = {}
+    for p in ShadbalaCalculator.PLANETS:
+        if p in results["planets"]:
+            spd = results["planets"][p].get("speed", 0.0)
+            results["ishta_kashta"][p] = calculate_ishta_kashta(
+                p, results["planets"][p]["longitude"], spd
+            )
+    
+    # Jaimini Karakas
+    results["jaimini_karakas"] = calculate_jaimini_karakas(classical_lons)
+
+    # Yogas — all categories
+    results["yogas"] = {
+        "nabhasa":     detect_nabhasa_yogas(classical_lons),
+        "raja":        detect_raja_yogas(classical_lons, results["lagna"]),
+        "daridra":     detect_daridra_yogas(classical_lons, results["lagna"]),
+        "surya":       detect_surya_yogas(classical_lons),
+        "chandra":     detect_chandra_yogas(classical_lons, results["lagna"]),
+        "combination": detect_combination_yogas(classical_lons, results["lagna"]),
+        "parivartana": detect_parivartana_yogas(classical_lons, results["lagna"]),
+        "raja_sambandha": detect_raja_sambandha(
+            classical_lons, results["lagna"], results["jaimini_karakas"]
+        ),
+    }
+    
+    # Marakas
+    
+    # Balarishta & Arishta Bhanga
+    balarishtas = detect_balarishta(classical_lons, results["lagna"])
+    results["balarishta"] = balarishtas
+    results["arishta_bhanga"] = detect_arishta_bhanga(classical_lons, results["lagna"], balarishtas)
+    
+    # Purva Janma Shapa
+    results["purva_janma_shapa"] = detect_purva_janma_shapa(classical_lons, results["lagna"])
+    
+    # --- TAJIKA / VARSHAPHALA (Current year) ---
+    current_year = datetime.now().year
+    # Need natal sun for solar return, but for now we just do muntha
+    # Assumes building for current year if not specified
+    results["muntha"] = calculate_muntha(int(results["lagna"]/30)+1, current_year - year)
+    results["tajik_yogas"] = detect_tajik_yogas(results["planets"])
+    
+    # --- TRANSIT & CHAKRAS ---
     results["sudarshan_chakra"] = calculate_sudarshan_chakra(classical_lons, results["lagna"])
     results["sarvatobhadra"] = calculate_sbc_vedha(classical_lons, classical_lons)
     
+    # --- SHADBALA (Planetary Strengths) ---
+    is_day = sr_dt <= dt_utc < ss_dt if sr_dt and ss_dt else True
+    moon_diff = (results["planets"]["Moon"]["longitude"] - results["planets"]["Sun"]["longitude"]) % 360
+    
+    # Simple approximations for lords (can be refined)
+    # Weekday lord: 0=Mon, 1=Tue... 6=Sun
+    weekday_map = {0: "Moon", 1: "Mars", 2: "Mercury", 3: "Jupiter", 4: "Venus", 5: "Saturn", 6: "Sun"}
+    weekday_lord = weekday_map.get(dt_utc.weekday(), "Sun")
+    
+    results["shadbala"] = {}
+    for p in ShadbalaCalculator.PLANETS:
+        p_data = results["planets"][p]
+        vargas = results["vargas"][p]
+        
+        sthana = ShadbalaCalculator.calculate_sthana_bala(p, p_data["longitude"], p_data["house"], vargas)
+        dig = ShadbalaCalculator.calculate_dig_bala(p, p_data["longitude"], results["lagna"], results["lagna"]) # Placeholder for MC
+        # Hora lord placeholder - using Sun for now if day, else Moon
+        kala = ShadbalaCalculator.calculate_kala_bala(p, is_day, moon_diff, weekday_lord, "Sun" if is_day else "Moon")
+        cheshta = ShadbalaCalculator.calculate_cheshta_bala(p, p_data.get("speed", 0), p_data.get("is_retrograde", False))
+        drig = ShadbalaCalculator.calculate_drig_bala(p, {name: pl["longitude"] for name, pl in results["planets"].items() if name in ShadbalaCalculator.PLANETS})
+        
+        comps = {
+            "sthana_bala": sthana,
+            "dig_bala": dig,
+            "kala_bala": kala,
+            "cheshta_bala": cheshta,
+            "drig_bala": drig,
+            "naisargika_bala": ShadbalaCalculator.NAISARGIKA_BALA.get(p, 0)
+        }
+        results["shadbala"][p] = ShadbalaCalculator.get_total_shadbala(p, comps)
+        results["shadbala"][p]["components"] = comps
+
+    from .vimsopaka import get_vimsopaka_bala
+    results["vimsopaka"] = {p: get_vimsopaka_bala(p, results["planets"]) for p in PLANETS_7}
+
+    # --- LONGEVITY & HEALTH ---
+
+    results["longevity"] = calculate_pinda_ayu(classical_lons, results["lagna"])
+    results["marakas"] = detect_marakas(classical_lons, results["lagna"])
+    results["health_vulnerabilities"] = get_health_vulnerabilities({p: results["planets"][p]["house"] for p in results["planets"] if p in classical_lons or p in ["Rahu", "Ketu"]}, {})
+    results["indu_lagna"] = calculate_indu_lagna(classical_lons, results["lagna"], results["planets"]["Moon"]["longitude"])
+
     return results
+
+
 
 def get_skyfield_julday(year, month, day, hour=0.0):
     ts, _ = load_ephemeris()
@@ -338,12 +486,18 @@ def skyfield_calc_ut(t, body_name, ayanamsha_type="LAHIRI"):
     jd = t.tt
     ayan = get_ayanamsha(jd, ayanamsha_type)
     delta_psi = _get_delta_psi(t)
+    
     sky_name = PLANETS_MAP.get(body_name, body_name)
     app = eph["earth"].at(t).observe(eph[sky_name]).apparent()
     R = framelib.build_ecliptic_matrix(t)
     r_ecl = R.dot(app.position.au)
+    
     lon = math.degrees(math.atan2(r_ecl[1], r_ecl[0])) % 360.0
     sid_lon = (lon - delta_psi - ayan) % 360.0
     _, dec, _ = app.radec()
     retro = is_retrograde(t, sky_name)
+    
     return [sid_lon, dec.degrees, -1.0 if retro else 1.0]
+
+def skyfield_rise_trans(t, lat, lon_deg):
+    return get_sunrise_sunset(lat, lon_deg, t.utc)
