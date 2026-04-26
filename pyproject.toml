@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vedic_astro_engine_lite"
+version = "1.0.0"
+description = "High-precision Vedic Astrology engine (Lite Version) with Panchanga, Varga, and Vimshottari"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "AGPL-3.0-only" }
+authors = [
+    { name = "Prabhakar Panday", email = "prabhakarpanday4@gmail.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3 (AGPLv3)",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Astronomy"
+]
+dependencies = [
+    "skyfield>=1.46",
+    "numpy>=1.24"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/pandaypr/VedicAstroEngineLite"
+"Bug Tracker" = "https://github.com/pandaypr/VedicAstroEngineLite/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vedic_astro_engine*"]
