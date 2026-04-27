@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vedic_astro_engine_lite"
-version = "1.1.0"
+version = "1.2.0"
 description = "Professional-grade Vedic Astrology engine with Shadbala, Yogas, and PDF Reporting (AGPL v3)"
 readme = "README.md"
 requires-python = ">=3.8"

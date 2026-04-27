@@ -162,6 +162,33 @@ def is_retrograde(t, sky_name):
     diff = (lon_p - lon_m + 180.0) % 360.0 - 180.0
     return diff < 0
 
+NAKSHATRA_NAMES = [
+    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
+    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
+    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
+]
+
+def calculate_nakshatra_pada(longitude: float):
+    nak_val = longitude / (360.0 / 27.0)
+    nak_num = int(nak_val)
+    pada = int((longitude % (360.0 / 27.0)) / (360.0 / 108.0)) + 1
+    return NAKSHATRA_NAMES[nak_num], pada
+
+def get_temporal_relationships(planet, planet_signs):
+    friends = set()
+    enemies = set()
+    p_sign = planet_signs[planet]
+    for other_p, other_sign in planet_signs.items():
+        if other_p == planet or other_p not in ShadbalaCalculator.PLANETS: continue
+        dist = (other_sign - p_sign) % 12
+        if dist in [1, 2, 3, 9, 10, 11]:
+            friends.add(other_p)
+        else:
+            enemies.add(other_p)
+    return friends, enemies
+
 def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="LAHIRI", node_type="TRUE"):
     ts, eph = load_ephemeris()
     t = ts.utc(year, month, day, hour, minute, 0)
@@ -279,6 +306,10 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
         # Simple house calculation from Lagna (Equal house logic for predictive flags)
         rel_deg = (lon - results["lagna"]) % 360
         p_data["house"] = int(rel_deg / 30) + 1
+        
+        nak_name, pada = calculate_nakshatra_pada(lon)
+        p_data["nakshatra"] = nak_name
+        p_data["pada"] = pada
     
     # KP Astrology (Placidus + Sublords)
     # We calculate the eps_rad (obliquity) and other parameters for Placidus
@@ -429,7 +460,12 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     results["sarvatobhadra"] = calculate_sbc_vedha(classical_lons, classical_lons)
     
     # --- SHADBALA (Planetary Strengths) ---
-    is_day = sr_dt <= dt_utc < ss_dt if sr_dt and ss_dt else True
+    sr_val = results.get("sunrise")
+    ss_val = results.get("sunset")
+    _sr_dt = datetime.fromisoformat(sr_val.replace('Z', '+00:00')) if sr_val else None
+    _ss_dt = datetime.fromisoformat(ss_val.replace('Z', '+00:00')) if ss_val else None
+    is_day = _sr_dt <= dt_utc < _ss_dt if _sr_dt and _ss_dt else True
+    
     moon_diff = (results["planets"]["Moon"]["longitude"] - results["planets"]["Sun"]["longitude"]) % 360
     
     # Simple approximations for lords (can be refined)
@@ -437,16 +473,22 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
     weekday_map = {0: "Moon", 1: "Mars", 2: "Mercury", 3: "Jupiter", 4: "Venus", 5: "Saturn", 6: "Sun"}
     weekday_lord = weekday_map.get(dt_utc.weekday(), "Sun")
     
+    hora_weekday = _sr_dt.weekday() if _sr_dt else dt_utc.weekday()
+    hours_since_sunrise = (dt_utc - _sr_dt).total_seconds() / 3600.0 if _sr_dt else 0.0
+    
+    p_signs = {p: results["planets"][p]["sign"] for p in ShadbalaCalculator.PLANETS}
+    
     results["shadbala"] = {}
     for p in ShadbalaCalculator.PLANETS:
         p_data = results["planets"][p]
         vargas = results["vargas"][p]
         
-        sthana = ShadbalaCalculator.calculate_sthana_bala(p, p_data["longitude"], p_data["house"], vargas)
-        dig = ShadbalaCalculator.calculate_dig_bala(p, p_data["longitude"], results["lagna"], results["lagna"]) # Placeholder for MC
-        # Hora lord placeholder - using Sun for now if day, else Moon
-        kala = ShadbalaCalculator.calculate_kala_bala(p, is_day, moon_diff, weekday_lord, "Sun" if is_day else "Moon")
-        cheshta = ShadbalaCalculator.calculate_cheshta_bala(p, p_data.get("speed", 0), p_data.get("is_retrograde", False))
+        t_friends, t_enemies = get_temporal_relationships(p, p_signs)
+        
+        sthana = ShadbalaCalculator.calculate_sthana_bala(p, p_data["longitude"], p_data["house"], vargas, t_friends, t_enemies)
+        dig = ShadbalaCalculator.calculate_dig_bala(p, p_data["longitude"], results["kp"]["placidus_cusps"])
+        kala = ShadbalaCalculator.calculate_kala_bala(p, is_day, moon_diff, weekday_lord, hora_weekday, hours_since_sunrise)
+        cheshta = ShadbalaCalculator.calculate_cheshta_bala(p, p_data.get("speed", 0), p_data.get("is_retrograde", False), moon_diff)
         drig = ShadbalaCalculator.calculate_drig_bala(p, {name: pl["longitude"] for name, pl in results["planets"].items() if name in ShadbalaCalculator.PLANETS})
         
         comps = {
@@ -457,8 +499,10 @@ def build_charts(year, month, day, hour, minute, lat, lon_deg, ayanamsha_type="L
             "drig_bala": drig,
             "naisargika_bala": ShadbalaCalculator.NAISARGIKA_BALA.get(p, 0)
         }
-        results["shadbala"][p] = ShadbalaCalculator.get_total_shadbala(p, comps)
-        results["shadbala"][p]["components"] = comps
+        totals = ShadbalaCalculator.get_total_shadbala(p, comps)
+        comps["shadbala_virupas"] = totals["virupas"]
+        comps["shadbala_rupas"] = totals["rupas"]
+        results["shadbala"][p] = comps
 
     from .vimsopaka import get_vimsopaka_bala
     results["vimsopaka"] = {p: get_vimsopaka_bala(p, results["planets"]) for p in PLANETS_7}
