@@ -27,13 +27,19 @@ def check_bhadra(karana_num: int) -> bool:
     """
     return karana_num in [7, 14, 21, 28, 35, 42, 49, 56]
 
-def get_muhurta_yogas(weekday: int, nak_idx: int) -> list:
+def get_muhurta_yogas(weekday: int, nak_idx) -> list:
     """
     Finds special auspicious yogas based on Weekday + Nakshatra.
-    nak_idx: 1-27
+    nak_idx: 1-27 or Nakshatra name
     """
-    if not (1 <= nak_idx <= 27): return []
-    nak_name = NAKS[nak_idx - 1]
+    if isinstance(nak_idx, str):
+        if nak_idx in NAKS:
+            nak_idx = NAKS.index(nak_idx) + 1
+        else:
+            return []
+    if not isinstance(nak_idx, (int, float)) or not (1 <= nak_idx <= 27):
+        return []
+    nak_name = NAKS[int(nak_idx) - 1]
     yogas = []
     
     # Sarvartha Siddhi Yoga (SSY)
@@ -71,12 +77,25 @@ def get_muhurta_summary(panchanga: dict, planets: dict, weekday: int) -> dict:
     Consolidates all Muhurta factors.
     """
     moon_lon = planets.get("Moon", {}).get("longitude", 0)
-    nak_idx = panchanga.get("nakshatra", 1)
-    karana_num = panchanga.get("karana", 1)
-    
+    nak_val = panchanga.get("nakshatra", 1)
+    if isinstance(nak_val, str):
+        if nak_val in NAKS:
+            nak_idx = NAKS.index(nak_val) + 1
+        else:
+            nak_idx = 1
+    else:
+        nak_idx = nak_val
+
+    karana_val = panchanga.get("karana", 1)
+    if isinstance(karana_val, str):
+        is_bhadra = karana_val.lower() == "vishti"
+    else:
+        is_bhadra = check_bhadra(karana_val)
+
     return {
         "is_panchak": check_panchak(moon_lon),
-        "is_bhadra": check_bhadra(karana_num),
+        "is_bhadra": is_bhadra,
         "yogas": get_muhurta_yogas(weekday, nak_idx)
     }
+
 
